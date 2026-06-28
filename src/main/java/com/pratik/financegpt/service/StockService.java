@@ -27,9 +27,7 @@ public class StockService {
     public String getCurrentPrice(String symbol) {
         try {
             String url = apiUrl + "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + apiKey;
-            System.out.println("DEBUG - Calling URL: " + url);
             Map response = restTemplate.getForObject(url, Map.class);
-            System.out.println("DEBUG - Response: " + response);
 
             Map globalQuote = (Map) response.get("Global Quote");
 
