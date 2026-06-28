@@ -39,9 +39,8 @@ public class StockService {
             String change = (String) globalQuote.get("09. change");
             String changePercent = (String) globalQuote.get("10. change percent");
 
-            return "Current price of " + symbol + ": $" + price +
-                    " | Change: " + change +
-                    " | Change %: " + changePercent;
+            return String.format("### 📈 %s Stock Price\n\n- **Current Price:** $%s\n- **Change:** %s\n- **Change %%:** %s",
+                    symbol, price, change, changePercent);
 
         } catch (Exception e) {
             return "Error fetching stock data: " + e.getMessage();
@@ -64,7 +63,7 @@ public class StockService {
             Collections.sort(dates, Collections.reverseOrder());
 
             StringBuilder result = new StringBuilder();
-            result.append("Weekly performance of ").append(symbol).append(":\n");
+            result.append("### 📊 Weekly Performance — ").append(symbol).append("\n\n");
 
             for (int i = 0; i < Math.min(4, dates.size()); i++) {
                 String date = dates.get(i);
@@ -83,7 +82,7 @@ public class StockService {
     public String compareStocks(List<String> symbols) {
         try {
             StringBuilder result = new StringBuilder();
-            result.append("Stock Comparison:\n");
+            result.append("### 🔀 Stock Comparison\n\n");
 
             for (String symbol : symbols) {
                 try {
@@ -98,8 +97,7 @@ public class StockService {
                 if (globalQuote != null && !globalQuote.isEmpty()) {
                     String price = (String) globalQuote.get("05. price");
                     String changePercent = (String) globalQuote.get("10. change percent");
-                    result.append(symbol).append(": $").append(price)
-                            .append(" (").append(changePercent).append(")\n");
+                    result.append(String.format("- **%s**: $%s (%s)\n", symbol, price, changePercent));
                 }
             }
 

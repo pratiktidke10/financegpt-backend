@@ -82,21 +82,26 @@ public class PortfolioService {
         }
     }
 
-    public String viewPortfolio(String username){
+    public String viewPortfolio(String username) {
         try {
             List<Portfolio> positions = portfolioRepository.findByUsername(username);
+
             if (positions.isEmpty()) {
                 return "Your portfolio is empty. Start by buying some stocks!";
             }
+
             StringBuilder result = new StringBuilder();
-            result.append("\uD83D\uDCCA Your Portfolio:\\n\\n");
+            result.append("### 📊 Your Portfolio\n\n");
+
             for (Portfolio position : positions) {
-                result.append(String.format("• %s: %d shares (bought at $%.2f)\n",
+                result.append(String.format("- **%s**: %d shares (bought at $%.2f)\n",
                         position.getSymbol(),
                         position.getQuantity(),
                         position.getBuyPrice()));
             }
+
             return result.toString();
+
         } catch (Exception e) {
             return "Error fetching portfolio: " + e.getMessage();
         }
