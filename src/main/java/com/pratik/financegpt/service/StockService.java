@@ -5,6 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 @Service
 public class StockService {
@@ -42,6 +45,68 @@ public class StockService {
 
         } catch (Exception e) {
             return "Error fetching stock data: " + e.getMessage();
+        }
+    }
+
+    public String getPerformance(String symbol) {
+        try {
+            String url = apiUrl + "?function=TIME_SERIES_WEEKLY&symbol=" + symbol + "&apikey=" + apiKey;
+            Map response = restTemplate.getForObject(url, Map.class);
+
+            Map weeklyData = (Map) response.get("Weekly Time Series");
+
+            if (weeklyData == null || weeklyData.isEmpty()) {
+                return "No performance data found for: " + symbol;
+            }
+
+            // Get last 4 weeks
+            List<String> dates = new ArrayList<>(weeklyData.keySet());
+            Collections.sort(dates, Collections.reverseOrder());
+
+            StringBuilder result = new StringBuilder();
+            result.append("Weekly performance of ").append(symbol).append(":\n");
+
+            for (int i = 0; i < Math.min(4, dates.size()); i++) {
+                String date = dates.get(i);
+                Map weekData = (Map) weeklyData.get(date);
+                String closePrice = (String) weekData.get("4. close");
+                result.append("Week of ").append(date).append(": $").append(closePrice).append("\n");
+            }
+
+            return result.toString();
+
+        } catch (Exception e) {
+            return "Error fetching performance data: " + e.getMessage();
+        }
+    }
+
+    public String compareStocks(List<String> symbols) {
+        try {
+            StringBuilder result = new StringBuilder();
+            result.append("Stock Comparison:\n");
+
+            for (String symbol : symbols) {
+                try {
+                    Thread.sleep(1000); // wait 1 second between requests
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                String url = apiUrl + "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + apiKey;
+                Map response = restTemplate.getForObject(url, Map.class);
+                Map globalQuote = (Map) response.get("Global Quote");
+
+                if (globalQuote != null && !globalQuote.isEmpty()) {
+                    String price = (String) globalQuote.get("05. price");
+                    String changePercent = (String) globalQuote.get("10. change percent");
+                    result.append(symbol).append(": $").append(price)
+                            .append(" (").append(changePercent).append(")\n");
+                }
+            }
+
+            return result.toString();
+
+        } catch (Exception e) {
+            return "Error comparing stocks: " + e.getMessage();
         }
     }
 }

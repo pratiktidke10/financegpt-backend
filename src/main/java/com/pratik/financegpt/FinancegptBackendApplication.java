@@ -16,5 +16,4 @@ public class FinancegptBackendApplication {
 	public RestTemplate restTemplate(){
 		return new RestTemplate();
 	}
-
 }
