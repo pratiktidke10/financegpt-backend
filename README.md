@@ -11,7 +11,7 @@
 ## 🔗 Live Demo
 
 - **Backend API:** https://financegpt-backend-h10j.onrender.com
-- **Frontend:** https://your-vercel-url.vercel.app
+- **Frontend:** https://financegpt-frontend.vercel.app
 ---
 
 ## 📌 Project Overview
