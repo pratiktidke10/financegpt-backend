@@ -4,6 +4,8 @@ import com.pratik.financegpt.model.ChatRequest;
 import com.pratik.financegpt.model.ChatResponse;
 import com.pratik.financegpt.service.ChatService;
 import com.pratik.financegpt.service.StockService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,8 +25,9 @@ public class ChatController {
     }
 
     @PostMapping("/api/chat")
-    public ChatResponse chat(@RequestBody ChatRequest request){
-        String result = chatService.processMessage(request.getMessage());
+    public ChatResponse chat(@RequestBody ChatRequest request, @AuthenticationPrincipal UserDetails userDetails){
+        String username = userDetails.getUsername();
+        String result = chatService.processMessage(request.getMessage(),username);
         return new ChatResponse(result);
     }
 }

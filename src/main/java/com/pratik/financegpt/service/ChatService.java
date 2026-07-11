@@ -77,7 +77,7 @@ public class ChatService {
         this.portfolioService = portfolioService;
     }
 
-    public String processMessage(String userMessage) {
+    public String processMessage(String userMessage, String username) {
         try {
 
             String geminiResponse = callGemini(SYSTEM_PROMPT + "\n\nUser message: " + userMessage);
@@ -96,13 +96,13 @@ public class ChatService {
                 }
                 case "BUY_STOCK" -> {
                     Integer quantity = (Integer) intentData.getOrDefault("quantity", 1);
-                    yield portfolioService.buyStock("user1", symbol, quantity);
+                    yield portfolioService.buyStock(username, symbol, quantity);
                 }
                 case "SELL_STOCK" -> {
                     Integer quantity = (Integer) intentData.getOrDefault("quantity", 1);
-                    yield portfolioService.sellStock("user1", symbol, quantity);
+                    yield portfolioService.sellStock(username, symbol, quantity);
                 }
-                case "VIEW_PORTFOLIO" -> portfolioService.viewPortfolio("user1");
+                case "VIEW_PORTFOLIO" -> portfolioService.viewPortfolio(username);
                 case "GENERAL" -> (String) intentData.get("message");
                 default -> "I can help you with stock prices, performance, comparisons and portfolio management!";
             };
