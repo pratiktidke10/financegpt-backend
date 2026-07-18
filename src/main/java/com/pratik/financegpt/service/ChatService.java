@@ -1,7 +1,9 @@
 package com.pratik.financegpt.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pratik.financegpt.entity.ChatHistory;
 import com.pratik.financegpt.model.ChatResponse;
+import com.pratik.financegpt.repository.ChatHistoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -29,6 +31,7 @@ public class ChatService {
     private final StockService stockService;
     private final ObjectMapper objectMapper;
     private final PortfolioService portfolioService;
+    private final ChatHistoryRepository chatHistoryRepository;
 
 
     private static final String SYSTEM_PROMPT = """
@@ -70,11 +73,13 @@ public class ChatService {
         "What is a stock?" → {"intent":"GENERAL","symbol":"","symbols":[],"quantity":0,"message":"A stock is..."}
         """;
 
-    public ChatService(RestTemplate restTemplate, StockService stockService, ObjectMapper objectMapper, PortfolioService portfolioService){
+    public ChatService(RestTemplate restTemplate, StockService stockService, ObjectMapper objectMapper, PortfolioService portfolioService
+                        , ChatHistoryRepository chatHistoryRepository ){
         this.restTemplate = restTemplate;
         this.stockService = stockService;
         this.objectMapper = objectMapper;
         this.portfolioService = portfolioService;
+        this.chatHistoryRepository = chatHistoryRepository;
     }
 
     public String processMessage(String userMessage, String username) {
@@ -87,7 +92,7 @@ public class ChatService {
             String intent = (String) intentData.get("intent");
             String symbol = (String) intentData.get("symbol");
 
-            return switch (intent) {
+            String result = switch (intent) {
                 case "STOCK_PRICE" -> stockService.getCurrentPrice(symbol);
                 case "STOCK_PERFORMANCE" -> stockService.getPerformance(symbol);
                 case "STOCK_COMPARISON" -> {
@@ -106,6 +111,10 @@ public class ChatService {
                 case "GENERAL" -> (String) intentData.get("message");
                 default -> "I can help you with stock prices, performance, comparisons and portfolio management!";
             };
+
+            ChatHistory history = new ChatHistory(username ,userMessage ,result);
+            chatHistoryRepository.save(history);
+            return result;
 
         } catch (Exception e) {
             return "Error calling gemini API: " + e.getMessage();
