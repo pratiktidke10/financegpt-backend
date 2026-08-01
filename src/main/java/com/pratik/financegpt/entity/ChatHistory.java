@@ -23,12 +23,16 @@ public class ChatHistory {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "conversation_id")
+    private String conversationId;
+
     public ChatHistory() {};
 
-    public ChatHistory(String username, String userMessage, String aiResponse) {
+    public ChatHistory(String username, String userMessage, String aiResponse, String conversationId) {
         this.username = username;
         this.userMessage = userMessage;
         this.aiResponse = aiResponse;
+        this.conversationId = conversationId;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -71,4 +75,7 @@ public class ChatHistory {
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
+
+    public String getConversationId() { return conversationId; }
+    public void setConversationId(String conversationId) { this.conversationId = conversationId; }
 }

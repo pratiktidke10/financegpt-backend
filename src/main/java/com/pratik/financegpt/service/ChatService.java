@@ -82,7 +82,7 @@ public class ChatService {
         this.chatHistoryRepository = chatHistoryRepository;
     }
 
-    public String processMessage(String userMessage, String username) {
+    public String processMessage(String userMessage, String username, String conversationId) {
         try {
 
             String geminiResponse = callGemini(SYSTEM_PROMPT + "\n\nUser message: " + userMessage);
@@ -112,7 +112,7 @@ public class ChatService {
                 default -> "I can help you with stock prices, performance, comparisons and portfolio management!";
             };
 
-            ChatHistory history = new ChatHistory(username ,userMessage ,result);
+            ChatHistory history = new ChatHistory(username ,userMessage ,result , conversationId);
             chatHistoryRepository.save(history);
             return result;
 
