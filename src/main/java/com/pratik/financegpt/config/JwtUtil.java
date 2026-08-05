@@ -1,7 +1,6 @@
 package com.pratik.financegpt.config;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -19,7 +18,7 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secret;
 
-    @Value("${jwt.expiration:604800000}")
+    @Value("${jwt.expiration:604800000}") // Default 7 days
     private Long expiration;
 
     private Key getSigningKey() {
@@ -43,7 +42,7 @@ public class JwtUtil {
     }
 
     public boolean validateToken(String token, String username) {
-        try{
+        try {
             String extractedUsername = extractUsername(token);
             return (extractedUsername != null && extractedUsername.equals(username) && !isTokenExpired(token));
         } catch (Exception e) {
@@ -51,22 +50,20 @@ public class JwtUtil {
         }
     }
 
-    private Claims extractClaims(String token) {
+    public Claims extractClaims(String token) {
         try {
             return Jwts.parserBuilder()
                     .setSigningKey(getSigningKey())
                     .build()
                     .parseClaimsJws(token)
                     .getBody();
-        } catch (ExpiredJwtException e) {
-            return e.getClaims();
         } catch (Exception e) {
-            return null;
+            return null; // Properly returns null for EXPIRED or INVALID signatures
         }
     }
 
-    private boolean isTokenExpired(String token) {
-        try{
+    public boolean isTokenExpired(String token) {
+        try {
             Claims claims = extractClaims(token);
             return claims == null || claims.getExpiration().before(new Date());
         } catch (Exception e) {
