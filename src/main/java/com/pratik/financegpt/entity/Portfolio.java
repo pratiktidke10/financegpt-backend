@@ -1,34 +1,38 @@
 package com.pratik.financegpt.entity;
 
 import jakarta.persistence.*;
-
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "portfolio")
+@Table(
+        name = "portfolio",
+        indexes = {
+                @Index(name = "idx_portfolio_username", columnList = "username"),
+                @Index(name = "idx_portfolio_user_symbol", columnList = "username, symbol")
+        }
+)
 public class Portfolio {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "username")
+    @Column(name = "username", nullable = false)
     private String username;
 
-    @Column(name = "symbol")
+    @Column(name = "symbol", nullable = false)
     private String symbol;
 
-    @Column(name = "quantity")
+    @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
-    @Column(name = "buy_price")
+    @Column(name = "buy_price", nullable = false)
     private Double buyPrice;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    public Portfolio(){
-
-    }
+    public Portfolio() {}
 
     public Portfolio(String username, String symbol, Integer quantity, Double buyPrice) {
         this.username = username;
@@ -38,6 +42,12 @@ public class Portfolio {
         this.createdAt = LocalDateTime.now();
     }
 
+    @PrePersist
+    protected void onCreate() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+    }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
