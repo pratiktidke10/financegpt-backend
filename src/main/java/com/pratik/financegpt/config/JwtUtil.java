@@ -1,6 +1,7 @@
 package com.pratik.financegpt.config;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -18,7 +19,7 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secret;
 
-    @Value("${jwt.expiration}")
+    @Value("${jwt.expiration:604800000}")
     private Long expiration;
 
     private Key getSigningKey() {
@@ -37,23 +38,39 @@ public class JwtUtil {
     }
 
     public String extractUsername(String token) {
-        return extractClaims(token).getSubject();
+        Claims claims = extractClaims(token);
+        return claims != null ? claims.getSubject() : null;
     }
 
     public boolean validateToken(String token, String username) {
-        String extractedUsername = extractUsername(token);
-        return extractedUsername.equals(username) && !isTokenExpired(token);
+        try{
+            String extractedUsername = extractUsername(token);
+            return (extractedUsername != null && extractedUsername.equals(username) && !isTokenExpired(token));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private Claims extractClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+        } catch (ExpiredJwtException e) {
+            return e.getClaims();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean isTokenExpired(String token) {
-        return extractClaims(token).getExpiration().before(new Date());
+        try{
+            Claims claims = extractClaims(token);
+            return claims == null || claims.getExpiration().before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
     }
 }

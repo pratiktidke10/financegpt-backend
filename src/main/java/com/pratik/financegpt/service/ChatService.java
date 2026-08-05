@@ -45,6 +45,7 @@ public class ChatService {
             "symbol": "SYMBOL_HERE",
             "symbols": ["SYMBOL1", "SYMBOL2"],
             "quantity": 1,
+            "title": "TITLE_HERE",
             "message": "MESSAGE_HERE"
         }
         
@@ -58,6 +59,7 @@ public class ChatService {
         - GENERAL: general financial question or anything else
         
         Rules:
+        - title: Generate a concise, 3 to 5 word summary title for this topic (e.g., "Tesla Stock Performance", "Apple Price Check", "Portfolio Overview", "Stock Market Definition").
         - For STOCK_PRICE, STOCK_PERFORMANCE, BUY_STOCK, SELL_STOCK fill symbol field with correct US ticker
         - For STOCK_COMPARISON fill symbols array
         - For BUY_STOCK and SELL_STOCK fill quantity field with the number mentioned, default 1
@@ -67,10 +69,10 @@ public class ChatService {
         - quantity must always be an integer number
         
         Examples:
-        "What is Apple's price?" → {"intent":"STOCK_PRICE","symbol":"AAPL","symbols":[],"quantity":1,"message":""}
-        "Buy 5 shares of Tesla" → {"intent":"BUY_STOCK","symbol":"TSLA","symbols":[],"quantity":5,"message":""}
-        "Show my portfolio" → {"intent":"VIEW_PORTFOLIO","symbol":"","symbols":[],"quantity":0,"message":""}
-        "What is a stock?" → {"intent":"GENERAL","symbol":"","symbols":[],"quantity":0,"message":"A stock is..."}
+        "What is Apple's price?" → {"intent":"STOCK_PRICE","symbol":"AAPL","symbols":[],"quantity":1,"title":"Apple Price Query","message":""}
+        "Buy 5 shares of Tesla" → {"intent":"BUY_STOCK","symbol":"TSLA","symbols":[],"quantity":5,"title":"Tesla Stock Purchase","message":""}
+        "Show my portfolio" → {"intent":"VIEW_PORTFOLIO","symbol":"","symbols":[],"quantity":0,"title":"Portfolio Holdings","message":""}
+        "What is a stock?" → {"intent":"GENERAL","symbol":"","symbols":[],"quantity":0,"title":"Stock Market Basics","message":"A stock is..."}
         """;
 
     public ChatService(RestTemplate restTemplate, StockService stockService, ObjectMapper objectMapper, PortfolioService portfolioService
@@ -91,10 +93,11 @@ public class ChatService {
 
             String intent = (String) intentData.get("intent");
             String symbol = (String) intentData.get("symbol");
+            String title = (String) intentData.getOrDefault("title",userMessage);
 
             String result = switch (intent) {
                 case "STOCK_PRICE" -> stockService.getCurrentPrice(symbol);
-                case "STOCK_PERFORMANCE" -> stockService.getPerformance(symbol);
+                case "STOCK_PERFORMANCE" -> stockService.getStockPerformance(symbol);
                 case "STOCK_COMPARISON" -> {
                     List<String> symbols = (List<String>) intentData.get("symbols");
                     yield stockService.compareStocks(symbols);
@@ -113,6 +116,7 @@ public class ChatService {
             };
 
             ChatHistory history = new ChatHistory(username ,userMessage ,result , conversationId);
+            history.setTitle(title);
             chatHistoryRepository.save(history);
             return result;
 

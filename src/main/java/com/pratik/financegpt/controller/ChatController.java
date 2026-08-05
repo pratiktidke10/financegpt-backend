@@ -55,7 +55,12 @@ public class ChatController {
                 seen.add(chat.getConversationId());
                 Map<String, Object> item = new HashMap<>();
                 item.put("conversationId", chat.getConversationId());
-                item.put("firstMessage", chat.getUserMessage());
+
+                String displayTitle = (chat.getTitle() != null && !chat.getTitle().isEmpty())
+                        ? chat.getTitle()
+                        : chat.getUserMessage();
+
+                item.put("firstMessage", displayTitle);
                 item.put("createdAt", chat.getCreatedAt());
                 result.add(item);
             }

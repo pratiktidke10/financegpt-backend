@@ -1,7 +1,7 @@
 package com.pratik.financegpt.repository;
 
 import com.pratik.financegpt.entity.ChatHistory;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -26,6 +26,8 @@ public class ChatHistory {
     @Column(name = "conversation_id")
     private String conversationId;
 
+    private String title;
+
     public ChatHistory() {};
 
     public ChatHistory(String username, String userMessage, String aiResponse, String conversationId) {
@@ -78,4 +80,7 @@ public class ChatHistory {
 
     public String getConversationId() { return conversationId; }
     public void setConversationId(String conversationId) { this.conversationId = conversationId; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
 }

@@ -19,8 +19,7 @@ public class PortfolioService {
 
     public String buyStock(String username , String symbol , Integer quantity){
         try {
-            String priceData = stockService.getCurrentPrice(symbol);
-            double price = extractPrice(priceData);
+            double price = stockService.getCurrentPriceValue(symbol);
 
             if(price <=0 ){
                 return "Could not fetch price for: " + symbol;
@@ -39,7 +38,7 @@ public class PortfolioService {
 
             double totalCost = price * quantity;
             return String.format("✅ Successfully bought %d shares of %s at $%.2f each. Total cost: $%.2f",
-                    quantity, symbol, price, totalCost);
+                    quantity, symbol.toUpperCase(), price, totalCost);
         } catch (Exception e) {
             return "Error buying stock: " + e.getMessage();
         }
@@ -61,8 +60,7 @@ public class PortfolioService {
                         position.getQuantity(), symbol, quantity);
             }
 
-            String priceData = stockService.getCurrentPrice(symbol);
-            double currentPrice = extractPrice(priceData);
+            double currentPrice = stockService.getCurrentPriceValue(symbol);
 
             if (position.getQuantity().equals(quantity)) {
                 // Sell all — delete record
@@ -75,7 +73,7 @@ public class PortfolioService {
 
             double totalValue = currentPrice * quantity;
             return String.format("✅ Successfully sold %d shares of %s at $%.2f each. Total value: $%.2f",
-                    quantity, symbol, currentPrice, totalValue);
+                    quantity, symbol.toUpperCase(), currentPrice, totalValue);
 
         } catch (Exception e) {
             return "Error selling stocks: " + e.getMessage();
@@ -90,17 +88,43 @@ public class PortfolioService {
                 return "Your portfolio is empty. Start by buying some stocks!";
             }
 
-            StringBuilder result = new StringBuilder();
-            result.append("### 📊 Your Portfolio\n\n");
+            double totalValue = 0.0;
+            StringBuilder jsonHoldings = new StringBuilder();
+            StringBuilder summaryText = new StringBuilder();
 
-            for (Portfolio position : positions) {
-                result.append(String.format("- **%s**: %d shares (bought at $%.2f)\n",
-                        position.getSymbol(),
-                        position.getQuantity(),
-                        position.getBuyPrice()));
+            summaryText.append("### 📊 Your Holdings Summary\n\n");
+
+            for(int i=0; i<positions.size(); i++){
+                Portfolio position = positions.get(i);
+                String symbol = position.getSymbol().toUpperCase();
+                int qty = position.getQuantity();
+                double buyPrice = position.getBuyPrice();
+                double currentPrice = stockService.getCurrentPriceValue(symbol);
+                double positionValue = currentPrice * qty;
+                totalValue += positionValue;
+
+                double pnl = (currentPrice - buyPrice) * qty;
+                String pnlSign = pnl >= 0 ? "▲ +" : "▼ ";
+
+                summaryText.append(String.format("- **%s**: %d shares @ $%.2f (Current: $%.2f | P&L: %s$%.2f)\n",
+                        symbol, qty, buyPrice, currentPrice, pnlSign, pnl));
+
+                jsonHoldings.append(String.format("    {\"symbol\": \"%s\", \"value\": %.2f}", symbol, positionValue));
+                if (i < positions.size() - 1) {
+                    jsonHoldings.append(",");
+                }
+                jsonHoldings.append("\n");
             }
 
-            return result.toString();
+            StringBuilder chartJson = new StringBuilder();
+            chartJson.append("\n```json\n{\n");
+            chartJson.append("  \"type\": \"PORTFOLIO_CHART\",\n");
+            chartJson.append(String.format("  \"totalValue\": %.2f,\n", totalValue));
+            chartJson.append("  \"holdings\": [\n");
+            chartJson.append(jsonHoldings);
+            chartJson.append("  ]\n}\n```\n\n");
+
+            return chartJson.toString() + summaryText.toString();
 
         } catch (Exception e) {
             return "Error fetching portfolio: " + e.getMessage();
