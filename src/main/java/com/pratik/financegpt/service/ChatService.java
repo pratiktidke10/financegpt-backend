@@ -2,21 +2,20 @@ package com.pratik.financegpt.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pratik.financegpt.entity.ChatHistory;
-import com.pratik.financegpt.model.ChatResponse;
 import com.pratik.financegpt.repository.ChatHistoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpHeaders;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 public class ChatService {
@@ -32,7 +31,6 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final PortfolioService portfolioService;
     private final ChatHistoryRepository chatHistoryRepository;
-
 
     private static final String SYSTEM_PROMPT = """
         You are FinanceGPT, an AI-powered financial assistant.
@@ -75,8 +73,8 @@ public class ChatService {
         "What is a stock?" → {"intent":"GENERAL","symbol":"","symbols":[],"quantity":0,"title":"Stock Market Basics","message":"A stock is..."}
         """;
 
-    public ChatService(RestTemplate restTemplate, StockService stockService, ObjectMapper objectMapper, PortfolioService portfolioService
-                        , ChatHistoryRepository chatHistoryRepository ){
+    public ChatService(RestTemplate restTemplate, StockService stockService, ObjectMapper objectMapper,
+                       PortfolioService portfolioService, ChatHistoryRepository chatHistoryRepository) {
         this.restTemplate = restTemplate;
         this.stockService = stockService;
         this.objectMapper = objectMapper;
@@ -84,49 +82,52 @@ public class ChatService {
         this.chatHistoryRepository = chatHistoryRepository;
     }
 
+    @Transactional
     public String processMessage(String userMessage, String username, String conversationId) {
         try {
-
             String geminiResponse = callGemini(SYSTEM_PROMPT + "\n\nUser message: " + userMessage);
             geminiResponse = geminiResponse.replaceAll("```json", "").replaceAll("```", "").trim();
-            Map<String , Object> intentData = objectMapper.readValue(geminiResponse , Map.class);
+
+            Map<String, Object> intentData = objectMapper.readValue(geminiResponse, Map.class);
 
             String intent = (String) intentData.get("intent");
             String symbol = (String) intentData.get("symbol");
-            String title = (String) intentData.getOrDefault("title",userMessage);
+            String title = (String) intentData.getOrDefault("title", userMessage);
 
-            String result = switch (intent) {
+            // Safe integer conversion for quantity
+            Object qtyObj = intentData.getOrDefault("quantity", 1);
+            Integer quantity = (qtyObj instanceof Number) ? ((Number) qtyObj).intValue() : 1;
+
+            String result = switch (intent != null ? intent : "GENERAL") {
                 case "STOCK_PRICE" -> stockService.getCurrentPrice(symbol);
                 case "STOCK_PERFORMANCE" -> stockService.getStockPerformance(symbol);
                 case "STOCK_COMPARISON" -> {
                     List<String> symbols = (List<String>) intentData.get("symbols");
                     yield stockService.compareStocks(symbols);
                 }
-                case "BUY_STOCK" -> {
-                    Integer quantity = (Integer) intentData.getOrDefault("quantity", 1);
-                    yield portfolioService.buyStock(username, symbol, quantity);
-                }
-                case "SELL_STOCK" -> {
-                    Integer quantity = (Integer) intentData.getOrDefault("quantity", 1);
-                    yield portfolioService.sellStock(username, symbol, quantity);
-                }
+                case "BUY_STOCK" -> portfolioService.buyStock(username, symbol, quantity);
+                case "SELL_STOCK" -> portfolioService.sellStock(username, symbol, quantity);
                 case "VIEW_PORTFOLIO" -> portfolioService.viewPortfolio(username);
                 case "GENERAL" -> (String) intentData.get("message");
                 default -> "I can help you with stock prices, performance, comparisons and portfolio management!";
             };
 
-            ChatHistory history = new ChatHistory(username ,userMessage ,result , conversationId);
+            // Save chat history record
+            ChatHistory history = new ChatHistory(username, userMessage, result, conversationId);
             history.setTitle(title);
             chatHistoryRepository.save(history);
+
             return result;
 
         } catch (Exception e) {
-            return "Error calling gemini API: " + e.getMessage();
+            e.printStackTrace();
+            return "Sorry, I ran into an error processing your request. Please try again.";
         }
     }
-    private String callGemini(String prompt){
-        Map<String , Object> part = new HashMap<>();
-        part.put("text" , prompt);
+
+    private String callGemini(String prompt) {
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", prompt);
 
         Map<String, Object> content = new HashMap<>();
         content.put("parts", List.of(part));
