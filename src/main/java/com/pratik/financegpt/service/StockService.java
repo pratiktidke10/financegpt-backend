@@ -1,122 +1,183 @@
 package com.pratik.financegpt.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 public class StockService {
 
-    @Value("${alphavantage.api.key}")
+    @Value("${finnhub.api.key}")
     private String apiKey;
 
-    @Value("${alphavantage.api.url}")
-    private String apiUrl;
-
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
 
-    public StockService(RestTemplate restTemplate) {
+    public StockService(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
     }
 
-    public String getCurrentPrice(String symbol) {
+    /**
+     * Normalizes informal stock names to valid US market tickers
+     */
+    public String cleanSymbol(String symbol) {
+        if (symbol == null || symbol.isBlank()) return "";
+        String clean = symbol.trim().toUpperCase();
+        return switch (clean) {
+            case "TATA", "TATA MOTORS", "TATAMOTORS" -> "TTM";
+            case "NVIDIA" -> "NVDA";
+            case "APPLE" -> "AAPL";
+            case "TESLA" -> "TSLA";
+            case "GOOGLE", "ALPHABET" -> "GOOGL";
+            case "MICROSOFT" -> "MSFT";
+            default -> clean;
+        };
+    }
+
+    /**
+     * 1. Get Current Stock Price (Finnhub Quote)
+     */
+    public String getCurrentPrice(String rawSymbol) {
+        String symbol = cleanSymbol(rawSymbol);
         try {
-            String url = apiUrl + "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + apiKey;
+            String url = String.format("https://finnhub.io/api/v1/quote?symbol=%s&token=%s", symbol, apiKey);
             Map response = restTemplate.getForObject(url, Map.class);
 
-            Map globalQuote = (Map) response.get("Global Quote");
+            if (response != null && response.containsKey("c")) {
+                Number currentPrice = (Number) response.get("c");
+                Number change = (Number) response.get("d");
+                Number percentChange = (Number) response.get("dp");
 
-            if (globalQuote == null || globalQuote.isEmpty()) {
-                return "Stock symbol not found: " + symbol;
+                if (currentPrice.doubleValue() == 0) {
+                    return "Stock symbol not found: " + symbol;
+                }
+
+                return String.format("### 📈 %s Stock Price\n\n- **Current Price:** $%.2f\n- **Change:** $%.2f\n- **Change %%:** %.2f%%",
+                        symbol, currentPrice.doubleValue(), change.doubleValue(), percentChange.doubleValue());
             }
 
-            String price = (String) globalQuote.get("05. price");
-            String change = (String) globalQuote.get("09. change");
-            String changePercent = (String) globalQuote.get("10. change percent");
-
-            return String.format("### 📈 %s Stock Price\n\n- **Current Price:** $%s\n- **Change:** %s\n- **Change %%:** %s",
-                    symbol, price, change, changePercent);
+            return "Stock symbol not found: " + symbol;
 
         } catch (Exception e) {
-            return "Error fetching stock data: " + e.getMessage();
+            return "Error fetching stock data for " + symbol + ": " + e.getMessage();
         }
     }
 
-    public String getPerformance(String symbol) {
+    /**
+     * 2. Single Stock Performance with Chart JSON (Finnhub Candle W)
+     */
+    public String getStockPerformance(String rawSymbol) {
+        String symbol = cleanSymbol(rawSymbol);
         try {
-            String url = apiUrl + "?function=TIME_SERIES_WEEKLY&symbol=" + symbol + "&apikey=" + apiKey;
+            long now = Instant.now().getEpochSecond();
+            long sixWeeksAgo = now - (6L * 7L * 24L * 60L * 60L);
+
+            String url = String.format("https://finnhub.io/api/v1/stock/candle?symbol=%s&resolution=W&from=%d&to=%d&token=%s",
+                    symbol, sixWeeksAgo, now, apiKey);
+
             Map response = restTemplate.getForObject(url, Map.class);
 
-            Map weeklyData = (Map) response.get("Weekly Time Series");
-
-            if (weeklyData == null || weeklyData.isEmpty()) {
-                return "No performance data found for: " + symbol;
+            if (response == null || !"ok".equals(response.get("s"))) {
+                return "Unable to fetch performance data for " + symbol + " at this time.";
             }
 
-            // Get last 4 weeks
-            List<String> dates = new ArrayList<>(weeklyData.keySet());
-            Collections.sort(dates, Collections.reverseOrder());
+            List<Number> closePrices = (List<Number>) response.get("c");
+            List<Number> timestamps = (List<Number>) response.get("t");
 
-            StringBuilder result = new StringBuilder();
-            result.append("### 📊 Weekly Performance — ").append(symbol).append("\n\n");
-
-            for (int i = 0; i < Math.min(4, dates.size()); i++) {
-                String date = dates.get(i);
-                Map weekData = (Map) weeklyData.get(date);
-                String closePrice = (String) weekData.get("4. close");
-                result.append("Week of ").append(date).append(": $").append(closePrice).append("\n");
+            if (closePrices == null || closePrices.isEmpty()) {
+                return "Unable to fetch performance data for " + symbol + " at this time.";
             }
 
-            return result.toString();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM/dd").withZone(ZoneId.of("UTC"));
+
+            // Build Recharts JSON
+            StringBuilder chartJson = new StringBuilder();
+            chartJson.append("\n```json\n{\n");
+            chartJson.append("  \"type\": \"STOCK_CHART\",\n");
+            chartJson.append("  \"symbol\": \"").append(symbol).append("\",\n");
+            chartJson.append("  \"points\": [\n");
+
+            StringBuilder summaryText = new StringBuilder();
+            summaryText.append("📊 **Weekly Performance — ").append(symbol).append("**\n");
+
+            int size = Math.min(closePrices.size(), timestamps.size());
+            for (int i = 0; i < size; i++) {
+                double price = closePrices.get(i).doubleValue();
+                String dateStr = formatter.format(Instant.ofEpochSecond(timestamps.get(i).longValue()));
+
+                chartJson.append(String.format("    {\"date\": \"%s\", \"price\": %.2f}", dateStr, price));
+                if (i < size - 1) chartJson.append(",");
+                chartJson.append("\n");
+
+                summaryText.append(String.format("Week of %s: **$%.2f**\n", dateStr, price));
+            }
+            chartJson.append("  ]\n}\n```\n\n");
+
+            return chartJson.toString() + summaryText.toString();
 
         } catch (Exception e) {
-            return "Error fetching performance data: " + e.getMessage();
+            return "Error fetching stock performance for " + symbol + ": " + e.getMessage();
         }
     }
 
-    public String compareStocks(List<String> symbols) {
+    /**
+     * 3. Compare Multiple Stocks (Finnhub Quotes + Candle Data)
+     */
+    public String compareStocks(List<String> rawSymbols) {
         try {
-            if(symbols == null || symbols.isEmpty()){
+            if (rawSymbols == null || rawSymbols.isEmpty()) {
                 return "Please provide at least two stock symbols to compare.";
             }
 
-            Map<String , Map<String , Double>> timeSeriesMap = new TreeMap<>();
-            List<String> validSymbols = new ArrayList<>();
+            List<String> validSymbols = rawSymbols.stream()
+                    .map(this::cleanSymbol)
+                    .filter(s -> !s.isBlank())
+                    .distinct()
+                    .toList();
 
-            for (String symbol : symbols) {
-                String upperSymbol = symbol.toUpperCase();
+            Map<String, Map<String, Double>> timeSeriesMap = new TreeMap<>();
+            List<String> activeSymbols = new ArrayList<>();
+
+            long now = Instant.now().getEpochSecond();
+            long sixWeeksAgo = now - (6L * 7L * 24L * 60L * 60L);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM/dd").withZone(ZoneId.of("UTC"));
+
+            for (String symbol : validSymbols) {
                 try {
-                    Thread.sleep(500);
-                    String url = apiUrl + "?function=TIME_SERIES_WEEKLY&symbol=" + upperSymbol + "&apikey=" + apiKey;
-                    String response = restTemplate.getForObject(url , String.class);
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode root = mapper.readTree(response);
-                    JsonNode timeSeries = root.path("Weekly Time Series");
+                    String url = String.format("https://finnhub.io/api/v1/stock/candle?symbol=%s&resolution=W&from=%d&to=%d&token=%s",
+                            symbol, sixWeeksAgo, now, apiKey);
 
-                    if(!timeSeries.isMissingNode()){
-                        validSymbols.add(upperSymbol);
-                        Iterator<String> dates = timeSeries.fieldNames();
-                        int count = 0;
-                        while(dates.hasNext() && count<6){
-                            String date = dates.next();
-                            double closePrice = timeSeries.get(date).path("4. close").asDouble();
-                            String shortDate = date.length() >= 10 ? date.substring(5) : date;
+                    Map response = restTemplate.getForObject(url, Map.class);
 
-                            timeSeriesMap.putIfAbsent(shortDate , new HashMap<>());
-                            timeSeriesMap.get(shortDate).put(upperSymbol , closePrice);
-                            count++;
+                    if (response != null && "ok".equals(response.get("s"))) {
+                        List<Number> closePrices = (List<Number>) response.get("c");
+                        List<Number> timestamps = (List<Number>) response.get("t");
+
+                        if (closePrices != null && !closePrices.isEmpty()) {
+                            activeSymbols.add(symbol);
+                            int size = Math.min(closePrices.size(), timestamps.size());
+                            for (int i = 0; i < size; i++) {
+                                String dateStr = formatter.format(Instant.ofEpochSecond(timestamps.get(i).longValue()));
+                                double price = closePrices.get(i).doubleValue();
+
+                                timeSeriesMap.putIfAbsent(dateStr, new HashMap<>());
+                                timeSeriesMap.get(dateStr).put(symbol, price);
+                            }
                         }
                     }
                 } catch (Exception e) {
-                    System.err.println("Error fetching comparison for " + upperSymbol + ": " + e.getMessage());
+                    System.err.println("Error fetching comparison for " + symbol + ": " + e.getMessage());
                 }
             }
 
-            if (validSymbols.isEmpty()){
+            if (activeSymbols.isEmpty()) {
                 return "Could not fetch comparison data for the requested symbols.";
             }
 
@@ -125,21 +186,21 @@ public class StockService {
             chartJson.append("\n```json\n{\n");
             chartJson.append("  \"type\": \"MULTI_STOCK_CHART\",\n");
             chartJson.append("  \"symbols\": [");
-            for(int i=0; i<validSymbols.size(); i++){
-                chartJson.append("\"").append(validSymbols.get(i)).append("\"");
-                if(i<validSymbols.size() - 1) chartJson.append(", ");
+            for (int i = 0; i < activeSymbols.size(); i++) {
+                chartJson.append("\"").append(activeSymbols.get(i)).append("\"");
+                if (i < activeSymbols.size() - 1) chartJson.append(", ");
             }
             chartJson.append("],\n");
             chartJson.append("  \"points\": [\n");
 
             List<String> sortedDates = new ArrayList<>(timeSeriesMap.keySet());
-            for(int i=0; i<sortedDates.size(); i++){
+            for (int i = 0; i < sortedDates.size(); i++) {
                 String date = sortedDates.get(i);
-                Map<String , Double> symbolPrices = timeSeriesMap.get(date);
+                Map<String, Double> symbolPrices = timeSeriesMap.get(date);
 
                 chartJson.append(String.format("    {\"date\": \"%s\"", date));
-                for (String sym : validSymbols) {
-                    Double price = symbolPrices.getOrDefault(sym, 0.0);
+                for (String sym : activeSymbols) {
+                    Double price = symbolPrices.getOrDefault(sym, getCurrentPriceValue(sym));
                     chartJson.append(String.format(", \"%s\": %.2f", sym, price));
                 }
                 chartJson.append("}");
@@ -151,7 +212,7 @@ public class StockService {
             // Build Summary Text
             StringBuilder summaryText = new StringBuilder();
             summaryText.append("### 🔀 Stock Comparison Analysis\n\n");
-            for (String sym : validSymbols) {
+            for (String sym : activeSymbols) {
                 double latestPrice = getCurrentPriceValue(sym);
                 summaryText.append(String.format("- **%s**: Latest Price $%.2f\n", sym, latestPrice));
             }
@@ -163,78 +224,19 @@ public class StockService {
         }
     }
 
-    public String getStockPerformance(String symbol) {
+    /**
+     * Helper: Get Raw Double Price Value for Stock
+     */
+    public double getCurrentPriceValue(String rawSymbol) {
+        String symbol = cleanSymbol(rawSymbol);
         try {
-            String url = "https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol="
-                    + symbol + "&apikey=" + apiKey;
+            String url = String.format("https://finnhub.io/api/v1/quote?symbol=%s&token=%s", symbol, apiKey);
+            Map response = restTemplate.getForObject(url, Map.class);
 
-            String response = restTemplate.getForObject(url, String.class);
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(response);
-            JsonNode timeSeries = root.path("Weekly Time Series");
-
-            if (timeSeries.isMissingNode()) {
-                return "Unable to fetch performance data for " + symbol + " at this time.";
-            }
-
-            List<String> dates = new ArrayList<>();
-            Iterator<String> fieldNames = timeSeries.fieldNames();
-            while (fieldNames.hasNext() && dates.size() < 6) {
-                dates.add(fieldNames.next());
-            }
-
-            // Reverse so dates go from oldest -> newest on the chart X-axis
-            Collections.reverse(dates);
-
-            // 1. Build JSON Payload for Recharts
-            StringBuilder chartJson = new StringBuilder();
-            chartJson.append("\n```json\n{\n");
-            chartJson.append("  \"type\": \"STOCK_CHART\",\n");
-            chartJson.append("  \"symbol\": \"").append(symbol.toUpperCase()).append("\",\n");
-            chartJson.append("  \"points\": [\n");
-
-            for (int i = 0; i < dates.size(); i++) {
-                String date = dates.get(i);
-                double closePrice = timeSeries.get(date).path("4. close").asDouble();
-
-                // Format date label (e.g., "07/31")
-                String shortDate = date.length() >= 10 ? date.substring(5) : date;
-
-                chartJson.append(String.format("    {\"date\": \"%s\", \"price\": %.2f}", shortDate, closePrice));
-                if (i < dates.size() - 1) {
-                    chartJson.append(",");
-                }
-                chartJson.append("\n");
-            }
-            chartJson.append("  ]\n}\n```\n\n");
-
-            // 2. Build Summary Markdown Text
-            StringBuilder summaryText = new StringBuilder();
-            summaryText.append("📊 **Weekly Performance — ").append(symbol.toUpperCase()).append("**\n");
-            for (int i = dates.size() - 1; i >= 0; i--) {
-                String date = dates.get(i);
-                double closePrice = timeSeries.get(date).path("4. close").asDouble();
-                summaryText.append(String.format("Week of %s: **$%.2f**\n", date, closePrice));
-            }
-
-            // Return combined JSON chart payload + text explanation
-            return chartJson.toString() + summaryText.toString();
-
-        } catch (Exception e) {
-            return "Error fetching stock performance for " + symbol + ": " + e.getMessage();
-        }
-    }
-
-    public double getCurrentPriceValue (String symbol){
-        try{
-            String url = apiUrl + "?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + apiKey;
-            Map response = restTemplate.getForObject(url , Map.class);
-
-            if(response != null && response.containsKey("Global Quote")){
-                Map globalQuote = (Map) response.get("Global Quote");
-                if(globalQuote != null && globalQuote.containsKey("05. price")){
-                    String priceStr = (String) globalQuote.get("05. price");
-                    return Double.parseDouble(priceStr);
+            if (response != null && response.containsKey("c")) {
+                Number price = (Number) response.get("c");
+                if (price.doubleValue() > 0) {
+                    return price.doubleValue();
                 }
             }
         } catch (Exception e) {
@@ -243,12 +245,13 @@ public class StockService {
         return getFallbackPrice(symbol);
     }
 
-    private double getFallbackPrice(String symbol){
+    private double getFallbackPrice(String symbol) {
         if (symbol == null) return 100.00;
         return switch (symbol.toUpperCase()) {
             case "AAPL" -> 220.50;
             case "TSLA" -> 215.30;
             case "GOOGL" -> 175.80;
+            case "NVDA" -> 120.40;
             case "TTM" -> 25.40;
             default -> 100.00;
         };

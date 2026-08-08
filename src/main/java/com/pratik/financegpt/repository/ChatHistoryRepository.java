@@ -21,4 +21,5 @@ public interface ChatHistoryRepository extends JpaRepository<ChatHistory, Long> 
 
     @Transactional
     void deleteByUsernameAndConversationId(String username, String conversationId);
+
 }

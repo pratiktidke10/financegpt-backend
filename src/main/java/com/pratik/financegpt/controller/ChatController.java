@@ -45,7 +45,7 @@ public class ChatController {
     @GetMapping("/api/history")
     public List<Map<String, Object>> getHistory(@AuthenticationPrincipal UserDetails userDetails) {
         String username = userDetails.getUsername();
-        List<ChatHistory> allHistory = chatHistoryRepository.findTop10ByUsernameOrderByCreatedAtDesc(username);
+        List<ChatHistory> allHistory = chatHistoryRepository.findByUsernameOrderByCreatedAtDesc(username);
 
         List<Map<String, Object>> result = new ArrayList<>();
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
